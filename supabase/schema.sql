@@ -13,14 +13,14 @@
 --  5. Se crea el bucket privado de fotos.
 -- =====================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 create type public.app_role as enum ('familia','profesional','admin');
 
 create table public.centers (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 100),
-  join_code text not null unique default upper(substr(encode(gen_random_bytes(6),'hex'),1,8)),
+  join_code text not null unique default upper(substr(encode(extensions.gen_random_bytes(6),'hex'),1,8)),
   created_by uuid not null default auth.uid(),
   created_at timestamptz not null default now()
 );
@@ -71,6 +71,8 @@ create table public.center_photos (
 );
 
 -- ---------- Permisos de tabla (las filas las filtran las políticas RLS) ----------
+-- Supabase concede por defecto todo a anon/authenticated: se retira y se da solo lo necesario.
+revoke all on all tables in schema public from anon, authenticated;
 grant select, insert, update, delete on public.children, public.child_members, public.child_pictos, public.center_photos to authenticated;
 grant select (id, name, created_by, created_at) on public.centers to authenticated;  -- sin join_code
 grant select on public.profiles, public.user_roles to authenticated;
@@ -203,7 +205,7 @@ language sql stable security definer set search_path = public as $$
   left join public.profiles p on p.id=m.user_id
   where m.child_id=_child and public.is_child_member(_child) $$;
 
-revoke execute on all functions in schema public from anon, public;
+revoke execute on all functions in schema public from anon, authenticated, public;
 grant execute on function public.create_center(text), public.join_center(text), public.leave_center(),
   public.my_center_code(), public.add_member_by_email(uuid,text), public.list_child_members(uuid),
   public.has_role(uuid,app_role), public.is_child_member(uuid), public.my_center(), public.can_view_center(uuid)
